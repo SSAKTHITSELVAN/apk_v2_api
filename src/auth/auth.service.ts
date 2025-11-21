@@ -1,0 +1,473 @@
+// // File: src/auth/auth.service.ts
+
+// import {
+//   Injectable,
+//   BadRequestException,
+//   UnauthorizedException,
+// } from '@nestjs/common';
+// import { InjectRepository } from '@nestjs/typeorm';
+// import { Repository } from 'typeorm';
+// import { JwtService } from '@nestjs/jwt';
+// import { User } from './entities/user.entity';
+// import { Company } from '../company/entities/company.entity';
+// import { SendOtpDto } from './dto/send-otp.dto';
+// import { VerifyOtpDto } from './dto/verify-otp.dto';
+// import { DeleteAccountDto } from './dto/delete-account.dto';
+// import { S3Service } from '../core/services/s3.service';
+
+// @Injectable()
+// export class AuthService {
+//   private readonly STATIC_OTP = '1234';
+
+//   constructor(
+//     @InjectRepository(User)
+//     private userRepository: Repository<User>,
+//     @InjectRepository(Company)
+//     private companyRepository: Repository<Company>,
+//     private jwtService: JwtService,
+//     private s3Service: S3Service,
+//   ) {}
+
+//   async sendOtp(sendOtpDto: SendOtpDto) {
+//     const { mobileNumber } = sendOtpDto;
+
+//     let user = await this.userRepository.findOne({ where: { mobileNumber } });
+
+//     if (!user) {
+//       user = this.userRepository.create({
+//         mobileNumber,
+//         isVerified: false,
+//       });
+//     }
+
+//     user.lastOtp = this.STATIC_OTP;
+//     user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+//     await this.userRepository.save(user);
+
+//     console.log(`📱 OTP for ${mobileNumber}: ${this.STATIC_OTP}`);
+
+//     return {
+//       message: 'OTP sent successfully',
+//       data: {
+//         mobileNumber,
+//         expiresIn: '5 minutes',
+//       },
+//     };
+//   }
+
+//   async verifyOtp(verifyOtpDto: VerifyOtpDto) {
+//     const { mobileNumber, otp } = verifyOtpDto;
+
+//     const user = await this.userRepository.findOne({
+//       where: { mobileNumber },
+//       relations: ['company'],
+//     });
+
+//     if (!user) {
+//       throw new BadRequestException('User not found');
+//     }
+
+//     if (!user.lastOtp || !user.otpExpiresAt) {
+//       throw new BadRequestException('No OTP found. Please request a new OTP');
+//     }
+
+//     if (user.otpExpiresAt < new Date()) {
+//       throw new BadRequestException('OTP has expired');
+//     }
+
+//     if (user.lastOtp !== otp) {
+//       throw new UnauthorizedException('Invalid OTP');
+//     }
+
+//     user.isVerified = true;
+//     user.lastOtp = null;
+//     user.otpExpiresAt = null;
+//     await this.userRepository.save(user);
+
+//     const payload = { sub: user.id, mobileNumber: user.mobileNumber };
+//     const accessToken = this.jwtService.sign(payload);
+
+//     const isNewUser = !user.company;
+
+//     let companyData: any = null;
+//     if (user.company) {
+//       companyData = {
+//         ...user.company,
+//         profileImage: await this.s3Service.getAccessibleUrl(user.company.profileImage),
+//         companyLogo: await this.s3Service.getAccessibleUrl(user.company.companyLogo),
+//       };
+//     }
+
+//     return {
+//       message: 'OTP verified successfully',
+//       data: {
+//         accessToken,
+//         user: {
+//           id: user.id,
+//           mobileNumber: user.mobileNumber,
+//           isVerified: user.isVerified,
+//         },
+//         isNewUser,
+//         company: companyData,
+//       },
+//     };
+//   }
+
+//   async getProfile(userId: string) {
+//     const user = await this.userRepository.findOne({
+//       where: { id: userId },
+//       relations: ['company'],
+//     });
+
+//     if (!user) {
+//       throw new BadRequestException('User not found');
+//     }
+
+//     let companyData: any = null;
+//     if (user.company) {
+//       companyData = {
+//         ...user.company,
+//         profileImage: await this.s3Service.getAccessibleUrl(user.company.profileImage),
+//         companyLogo: await this.s3Service.getAccessibleUrl(user.company.companyLogo),
+//       };
+//     }
+
+//     return {
+//       message: 'Profile retrieved successfully',
+//       data: {
+//         user: {
+//           id: user.id,
+//           mobileNumber: user.mobileNumber,
+//           isVerified: user.isVerified,
+//           createdAt: user.createdAt,
+//         },
+//         company: companyData,
+//       },
+//     };
+//   }
+
+//   /**
+//    * Send OTP for account deletion
+//    */
+//   async sendDeleteAccountOtp(userId: string) {
+//     const user = await this.userRepository.findOne({
+//       where: { id: userId },
+//     });
+
+//     if (!user) {
+//       throw new BadRequestException('User not found');
+//     }
+
+//     user.lastOtp = this.STATIC_OTP;
+//     user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+//     await this.userRepository.save(user);
+
+//     console.log(`📱 DELETE ACCOUNT OTP for ${user.mobileNumber}: ${this.STATIC_OTP}`);
+
+//     return {
+//       message: 'OTP sent successfully for account deletion',
+//       data: {
+//         mobileNumber: user.mobileNumber,
+//         expiresIn: '5 minutes',
+//       },
+//     };
+//   }
+
+//   /**
+//    * Delete user account and associated company
+//    */
+//   async deleteAccount(userId: string, deleteAccountDto: DeleteAccountDto) {
+//     const { otp } = deleteAccountDto;
+
+//     const user = await this.userRepository.findOne({
+//       where: { id: userId },
+//       relations: ['company'],
+//     });
+
+//     if (!user) {
+//       throw new BadRequestException('User not found');
+//     }
+
+//     if (!user.lastOtp || !user.otpExpiresAt) {
+//       throw new BadRequestException('No OTP found. Please request a new OTP for deletion');
+//     }
+
+//     if (user.otpExpiresAt < new Date()) {
+//       throw new BadRequestException('OTP has expired');
+//     }
+
+//     if (user.lastOtp !== otp) {
+//       throw new UnauthorizedException('Invalid OTP');
+//     }
+
+//     // Delete company images from S3 if exists
+//     if (user.company) {
+//       if (user.company.profileImage) {
+//         await this.s3Service.deleteFile(user.company.profileImage);
+//       }
+//       if (user.company.companyLogo) {
+//         await this.s3Service.deleteFile(user.company.companyLogo);
+//       }
+
+//       // Delete company
+//       await this.companyRepository.remove(user.company);
+//     }
+
+//     // Delete user
+//     await this.userRepository.remove(user);
+
+//     return {
+//       message: 'Account and associated data deleted successfully',
+//       data: null,
+//     };
+//   }
+// }
+
+
+// ============ FILE 7: src/auth/auth.service.ts (UPDATED - SIMPLIFIED DELETION) ============
+import {
+  Injectable,
+  BadRequestException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { JwtService } from '@nestjs/jwt';
+import { User } from './entities/user.entity';
+import { Company } from '../company/entities/company.entity';
+import { SendOtpDto } from './dto/send-otp.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
+import { S3Service } from '../core/services/s3.service';
+
+@Injectable()
+export class AuthService {
+  private readonly STATIC_OTP = '1234';
+
+  constructor(
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+    @InjectRepository(Company)
+    private companyRepository: Repository<Company>,
+    private jwtService: JwtService,
+    private s3Service: S3Service,
+  ) {}
+
+  async sendOtp(sendOtpDto: SendOtpDto) {
+    const { mobileNumber } = sendOtpDto;
+
+    let user = await this.userRepository.findOne({ where: { mobileNumber } });
+
+    if (!user) {
+      user = this.userRepository.create({
+        mobileNumber,
+        isVerified: false,
+      });
+    }
+
+    user.lastOtp = this.STATIC_OTP;
+    user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await this.userRepository.save(user);
+
+    console.log(`📱 OTP for ${mobileNumber}: ${this.STATIC_OTP}`);
+
+    return {
+      message: 'OTP sent successfully',
+      data: {
+        mobileNumber,
+        expiresIn: '5 minutes',
+      },
+    };
+  }
+
+  async verifyOtp(verifyOtpDto: VerifyOtpDto) {
+    const { mobileNumber, otp } = verifyOtpDto;
+
+    const user = await this.userRepository.findOne({
+      where: { mobileNumber },
+      relations: ['company'],
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    if (!user.lastOtp || !user.otpExpiresAt) {
+      throw new BadRequestException('No OTP found. Please request a new OTP');
+    }
+
+    if (user.otpExpiresAt < new Date()) {
+      throw new BadRequestException('OTP has expired');
+    }
+
+    if (user.lastOtp !== otp) {
+      throw new UnauthorizedException('Invalid OTP');
+    }
+
+    user.isVerified = true;
+    user.lastOtp = null;
+    user.otpExpiresAt = null;
+    await this.userRepository.save(user);
+
+    const payload = { sub: user.id, mobileNumber: user.mobileNumber };
+    const accessToken = this.jwtService.sign(payload);
+
+    const isNewUser = !user.company;
+
+    let companyData: any = null;
+    if (user.company) {
+      companyData = {
+        ...user.company,
+        profileImage: await this.s3Service.getAccessibleUrl(user.company.profileImage),
+        companyLogo: await this.s3Service.getAccessibleUrl(user.company.companyLogo),
+      };
+    }
+
+    return {
+      message: 'OTP verified successfully',
+      data: {
+        accessToken,
+        user: {
+          id: user.id,
+          mobileNumber: user.mobileNumber,
+          isVerified: user.isVerified,
+        },
+        isNewUser,
+        company: companyData,
+      },
+    };
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ['company'],
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    let companyData: any = null;
+    if (user.company) {
+      companyData = {
+        ...user.company,
+        profileImage: await this.s3Service.getAccessibleUrl(user.company.profileImage),
+        companyLogo: await this.s3Service.getAccessibleUrl(user.company.companyLogo),
+      };
+    }
+
+    return {
+      message: 'Profile retrieved successfully',
+      data: {
+        user: {
+          id: user.id,
+          mobileNumber: user.mobileNumber,
+          isVerified: user.isVerified,
+          createdAt: user.createdAt,
+        },
+        company: companyData,
+      },
+    };
+  }
+
+  /**
+   * Send OTP for account deletion
+   */
+  async sendDeleteAccountOtp(userId: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    user.lastOtp = this.STATIC_OTP;
+    user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await this.userRepository.save(user);
+
+    console.log(`📱 DELETE ACCOUNT OTP for ${user.mobileNumber}: ${this.STATIC_OTP}`);
+
+    return {
+      message: 'OTP sent successfully for account deletion',
+      data: {
+        mobileNumber: user.mobileNumber,
+        expiresIn: '5 minutes',
+      },
+    };
+  }
+
+  /**
+   * Delete user account and associated company
+   * With cascade delete configured, we only need to delete images and the user
+   */
+  async deleteAccount(userId: string, deleteAccountDto: DeleteAccountDto) {
+    const { otp } = deleteAccountDto;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ['company', 'company.leads'], // Load relations to delete S3 files
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    if (!user.lastOtp || !user.otpExpiresAt) {
+      throw new BadRequestException('No OTP found. Please request a new OTP for deletion');
+    }
+
+    if (user.otpExpiresAt < new Date()) {
+      throw new BadRequestException('OTP has expired');
+    }
+
+    if (user.lastOtp !== otp) {
+      throw new UnauthorizedException('Invalid OTP');
+    }
+
+    // Delete S3 files before deleting the database records
+    if (user.company) {
+      // Delete company images
+      if (user.company.profileImage) {
+        try {
+          await this.s3Service.deleteFile(user.company.profileImage);
+        } catch (error) {
+          console.error('Error deleting profile image:', error);
+        }
+      }
+      if (user.company.companyLogo) {
+        try {
+          await this.s3Service.deleteFile(user.company.companyLogo);
+        } catch (error) {
+          console.error('Error deleting company logo:', error);
+        }
+      }
+
+      // Delete all lead images
+      if (user.company.leads && user.company.leads.length > 0) {
+        for (const lead of user.company.leads) {
+          if (lead.imageKey) {
+            try {
+              await this.s3Service.deleteFile(lead.imageKey);
+            } catch (error) {
+              console.error(`Error deleting lead image ${lead.imageKey}:`, error);
+            }
+          }
+        }
+      }
+    }
+
+    // Delete the user - cascade will handle company, leads, consumptions, reports, and referrals
+    await this.userRepository.remove(user);
+
+    return {
+      message: 'Account and associated data deleted successfully',
+      data: null,
+    };
+  }
+}
