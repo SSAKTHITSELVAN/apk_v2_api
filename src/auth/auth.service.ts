@@ -1,232 +1,5 @@
-// // File: src/auth/auth.service.ts
+// File: src/auth/auth.service.ts
 
-// import {
-//   Injectable,
-//   BadRequestException,
-//   UnauthorizedException,
-// } from '@nestjs/common';
-// import { InjectRepository } from '@nestjs/typeorm';
-// import { Repository } from 'typeorm';
-// import { JwtService } from '@nestjs/jwt';
-// import { User } from './entities/user.entity';
-// import { Company } from '../company/entities/company.entity';
-// import { SendOtpDto } from './dto/send-otp.dto';
-// import { VerifyOtpDto } from './dto/verify-otp.dto';
-// import { DeleteAccountDto } from './dto/delete-account.dto';
-// import { S3Service } from '../core/services/s3.service';
-
-// @Injectable()
-// export class AuthService {
-//   private readonly STATIC_OTP = '1234';
-
-//   constructor(
-//     @InjectRepository(User)
-//     private userRepository: Repository<User>,
-//     @InjectRepository(Company)
-//     private companyRepository: Repository<Company>,
-//     private jwtService: JwtService,
-//     private s3Service: S3Service,
-//   ) {}
-
-//   async sendOtp(sendOtpDto: SendOtpDto) {
-//     const { mobileNumber } = sendOtpDto;
-
-//     let user = await this.userRepository.findOne({ where: { mobileNumber } });
-
-//     if (!user) {
-//       user = this.userRepository.create({
-//         mobileNumber,
-//         isVerified: false,
-//       });
-//     }
-
-//     user.lastOtp = this.STATIC_OTP;
-//     user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-//     await this.userRepository.save(user);
-
-//     console.log(`📱 OTP for ${mobileNumber}: ${this.STATIC_OTP}`);
-
-//     return {
-//       message: 'OTP sent successfully',
-//       data: {
-//         mobileNumber,
-//         expiresIn: '5 minutes',
-//       },
-//     };
-//   }
-
-//   async verifyOtp(verifyOtpDto: VerifyOtpDto) {
-//     const { mobileNumber, otp } = verifyOtpDto;
-
-//     const user = await this.userRepository.findOne({
-//       where: { mobileNumber },
-//       relations: ['company'],
-//     });
-
-//     if (!user) {
-//       throw new BadRequestException('User not found');
-//     }
-
-//     if (!user.lastOtp || !user.otpExpiresAt) {
-//       throw new BadRequestException('No OTP found. Please request a new OTP');
-//     }
-
-//     if (user.otpExpiresAt < new Date()) {
-//       throw new BadRequestException('OTP has expired');
-//     }
-
-//     if (user.lastOtp !== otp) {
-//       throw new UnauthorizedException('Invalid OTP');
-//     }
-
-//     user.isVerified = true;
-//     user.lastOtp = null;
-//     user.otpExpiresAt = null;
-//     await this.userRepository.save(user);
-
-//     const payload = { sub: user.id, mobileNumber: user.mobileNumber };
-//     const accessToken = this.jwtService.sign(payload);
-
-//     const isNewUser = !user.company;
-
-//     let companyData: any = null;
-//     if (user.company) {
-//       companyData = {
-//         ...user.company,
-//         profileImage: await this.s3Service.getAccessibleUrl(user.company.profileImage),
-//         companyLogo: await this.s3Service.getAccessibleUrl(user.company.companyLogo),
-//       };
-//     }
-
-//     return {
-//       message: 'OTP verified successfully',
-//       data: {
-//         accessToken,
-//         user: {
-//           id: user.id,
-//           mobileNumber: user.mobileNumber,
-//           isVerified: user.isVerified,
-//         },
-//         isNewUser,
-//         company: companyData,
-//       },
-//     };
-//   }
-
-//   async getProfile(userId: string) {
-//     const user = await this.userRepository.findOne({
-//       where: { id: userId },
-//       relations: ['company'],
-//     });
-
-//     if (!user) {
-//       throw new BadRequestException('User not found');
-//     }
-
-//     let companyData: any = null;
-//     if (user.company) {
-//       companyData = {
-//         ...user.company,
-//         profileImage: await this.s3Service.getAccessibleUrl(user.company.profileImage),
-//         companyLogo: await this.s3Service.getAccessibleUrl(user.company.companyLogo),
-//       };
-//     }
-
-//     return {
-//       message: 'Profile retrieved successfully',
-//       data: {
-//         user: {
-//           id: user.id,
-//           mobileNumber: user.mobileNumber,
-//           isVerified: user.isVerified,
-//           createdAt: user.createdAt,
-//         },
-//         company: companyData,
-//       },
-//     };
-//   }
-
-//   /**
-//    * Send OTP for account deletion
-//    */
-//   async sendDeleteAccountOtp(userId: string) {
-//     const user = await this.userRepository.findOne({
-//       where: { id: userId },
-//     });
-
-//     if (!user) {
-//       throw new BadRequestException('User not found');
-//     }
-
-//     user.lastOtp = this.STATIC_OTP;
-//     user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-//     await this.userRepository.save(user);
-
-//     console.log(`📱 DELETE ACCOUNT OTP for ${user.mobileNumber}: ${this.STATIC_OTP}`);
-
-//     return {
-//       message: 'OTP sent successfully for account deletion',
-//       data: {
-//         mobileNumber: user.mobileNumber,
-//         expiresIn: '5 minutes',
-//       },
-//     };
-//   }
-
-//   /**
-//    * Delete user account and associated company
-//    */
-//   async deleteAccount(userId: string, deleteAccountDto: DeleteAccountDto) {
-//     const { otp } = deleteAccountDto;
-
-//     const user = await this.userRepository.findOne({
-//       where: { id: userId },
-//       relations: ['company'],
-//     });
-
-//     if (!user) {
-//       throw new BadRequestException('User not found');
-//     }
-
-//     if (!user.lastOtp || !user.otpExpiresAt) {
-//       throw new BadRequestException('No OTP found. Please request a new OTP for deletion');
-//     }
-
-//     if (user.otpExpiresAt < new Date()) {
-//       throw new BadRequestException('OTP has expired');
-//     }
-
-//     if (user.lastOtp !== otp) {
-//       throw new UnauthorizedException('Invalid OTP');
-//     }
-
-//     // Delete company images from S3 if exists
-//     if (user.company) {
-//       if (user.company.profileImage) {
-//         await this.s3Service.deleteFile(user.company.profileImage);
-//       }
-//       if (user.company.companyLogo) {
-//         await this.s3Service.deleteFile(user.company.companyLogo);
-//       }
-
-//       // Delete company
-//       await this.companyRepository.remove(user.company);
-//     }
-
-//     // Delete user
-//     await this.userRepository.remove(user);
-
-//     return {
-//       message: 'Account and associated data deleted successfully',
-//       data: null,
-//     };
-//   }
-// }
-
-
-// ============ FILE 7: src/auth/auth.service.ts (UPDATED - SIMPLIFIED DELETION) ============
 import {
   Injectable,
   BadRequestException,
@@ -235,15 +8,18 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { User } from './entities/user.entity';
 import { Company } from '../company/entities/company.entity';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
 import { S3Service } from '../core/services/s3.service';
+import { Msg91Service } from '../core/services/msg91.service';
 
 @Injectable()
 export class AuthService {
+  private readonly useRealOtp: boolean;
   private readonly STATIC_OTP = '1234';
 
   constructor(
@@ -253,7 +29,12 @@ export class AuthService {
     private companyRepository: Repository<Company>,
     private jwtService: JwtService,
     private s3Service: S3Service,
-  ) {}
+    private msg91Service: Msg91Service,
+    private configService: ConfigService,
+  ) {
+    // Use real OTP in production, simulated OTP in development
+    this.useRealOtp = this.configService.get('NODE_ENV') === 'production';
+  }
 
   async sendOtp(sendOtpDto: SendOtpDto) {
     const { mobileNumber } = sendOtpDto;
@@ -267,18 +48,48 @@ export class AuthService {
       });
     }
 
-    user.lastOtp = this.STATIC_OTP;
-    user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    let otpCode: string;
+    let otpSent = false;
 
-    await this.userRepository.save(user);
+    if (this.useRealOtp) {
+      // Send real OTP via MSG91
+      const result = await this.msg91Service.sendOtp(mobileNumber);
 
-    console.log(`📱 OTP for ${mobileNumber}: ${this.STATIC_OTP}`);
+      if (result.success && result.otp) {
+        otpCode = result.otp;
+        otpSent = true;
+      } else {
+        // Fallback to Flow API if OTP API fails
+        const flowResult = await this.msg91Service.sendOtpViaFlow(mobileNumber);
+        
+        if (flowResult.success && flowResult.otp) {
+          otpCode = flowResult.otp;
+          otpSent = true;
+        } else {
+          throw new BadRequestException(
+            result.error || 'Failed to send OTP. Please try again.',
+          );
+        }
+      }
+    } else {
+      // Use static OTP for development
+      otpCode = this.STATIC_OTP;
+      otpSent = true;
+      console.log(`📱 DEV MODE - OTP for ${mobileNumber}: ${this.STATIC_OTP}`);
+    }
+
+    if (otpSent) {
+      user.lastOtp = otpCode;
+      user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      await this.userRepository.save(user);
+    }
 
     return {
       message: 'OTP sent successfully',
       data: {
         mobileNumber,
-        expiresIn: '5 minutes',
+        expiresIn: '10 minutes',
+        ...(this.useRealOtp ? {} : { otp: otpCode }), // Include OTP only in dev mode
       },
     };
   }
@@ -321,8 +132,12 @@ export class AuthService {
     if (user.company) {
       companyData = {
         ...user.company,
-        profileImage: await this.s3Service.getAccessibleUrl(user.company.profileImage),
-        companyLogo: await this.s3Service.getAccessibleUrl(user.company.companyLogo),
+        profileImage: await this.s3Service.getAccessibleUrl(
+          user.company.profileImage,
+        ),
+        companyLogo: await this.s3Service.getAccessibleUrl(
+          user.company.companyLogo,
+        ),
       };
     }
 
@@ -355,8 +170,12 @@ export class AuthService {
     if (user.company) {
       companyData = {
         ...user.company,
-        profileImage: await this.s3Service.getAccessibleUrl(user.company.profileImage),
-        companyLogo: await this.s3Service.getAccessibleUrl(user.company.companyLogo),
+        profileImage: await this.s3Service.getAccessibleUrl(
+          user.company.profileImage,
+        ),
+        companyLogo: await this.s3Service.getAccessibleUrl(
+          user.company.companyLogo,
+        ),
       };
     }
 
@@ -386,18 +205,52 @@ export class AuthService {
       throw new BadRequestException('User not found');
     }
 
-    user.lastOtp = this.STATIC_OTP;
-    user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    let otpCode: string;
+    let otpSent = false;
 
-    await this.userRepository.save(user);
+    if (this.useRealOtp) {
+      // Send real OTP via MSG91
+      const result = await this.msg91Service.sendOtp(user.mobileNumber);
 
-    console.log(`📱 DELETE ACCOUNT OTP for ${user.mobileNumber}: ${this.STATIC_OTP}`);
+      if (result.success && result.otp) {
+        otpCode = result.otp;
+        otpSent = true;
+      } else {
+        // Fallback to Flow API
+        const flowResult = await this.msg91Service.sendOtpViaFlow(
+          user.mobileNumber,
+        );
+        
+        if (flowResult.success && flowResult.otp) {
+          otpCode = flowResult.otp;
+          otpSent = true;
+        } else {
+          throw new BadRequestException(
+            result.error || 'Failed to send OTP for account deletion.',
+          );
+        }
+      }
+    } else {
+      // Use static OTP for development
+      otpCode = this.STATIC_OTP;
+      otpSent = true;
+      console.log(
+        `📱 DEV MODE - DELETE ACCOUNT OTP for ${user.mobileNumber}: ${this.STATIC_OTP}`,
+      );
+    }
+
+    if (otpSent) {
+      user.lastOtp = otpCode;
+      user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      await this.userRepository.save(user);
+    }
 
     return {
       message: 'OTP sent successfully for account deletion',
       data: {
         mobileNumber: user.mobileNumber,
-        expiresIn: '5 minutes',
+        expiresIn: '10 minutes',
+        ...(this.useRealOtp ? {} : { otp: otpCode }), // Include OTP only in dev mode
       },
     };
   }
@@ -411,7 +264,7 @@ export class AuthService {
 
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      relations: ['company', 'company.leads'], // Load relations to delete S3 files
+      relations: ['company', 'company.leads'],
     });
 
     if (!user) {
@@ -419,7 +272,9 @@ export class AuthService {
     }
 
     if (!user.lastOtp || !user.otpExpiresAt) {
-      throw new BadRequestException('No OTP found. Please request a new OTP for deletion');
+      throw new BadRequestException(
+        'No OTP found. Please request a new OTP for deletion',
+      );
     }
 
     if (user.otpExpiresAt < new Date()) {
@@ -455,7 +310,10 @@ export class AuthService {
             try {
               await this.s3Service.deleteFile(lead.imageKey);
             } catch (error) {
-              console.error(`Error deleting lead image ${lead.imageKey}:`, error);
+              console.error(
+                `Error deleting lead image ${lead.imageKey}:`,
+                error,
+              );
             }
           }
         }

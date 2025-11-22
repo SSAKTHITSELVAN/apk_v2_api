@@ -1,5 +1,5 @@
+// File: src/auth/auth.module.ts
 
-// ============ FILE 3: src/auth/auth.module.ts (UPDATED) ============
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
@@ -11,6 +11,7 @@ import { User } from './entities/user.entity';
 import { Company } from '../company/entities/company.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { S3Service } from '../core/services/s3.service';
+import { Msg91Service } from '../core/services/msg91.service';
 
 @Module({
   imports: [
@@ -28,7 +29,7 @@ import { S3Service } from '../core/services/s3.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, S3Service],
+  providers: [AuthService, JwtStrategy, S3Service, Msg91Service],
   exports: [JwtStrategy, PassportModule],
 })
 export class AuthModule {}
